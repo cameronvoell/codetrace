@@ -5,11 +5,55 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$DIR/ct-lib.sh"
 
-dir="$(ct_session_dir)"
-pidf="$dir/.audio.pid"
 src="${CT_AUDIO_SOURCE:-$(pactl get-default-source 2>/dev/null || echo default)}"
 
 case "${1:-status}" in
+devices)
+  echo "input sources (monitors are desktop audio, not microphones):"
+  echo
+  pactl list sources 2>/dev/null | awk -v def="$src" '
+    /^Source #/         {name="";desc="";mute="";vol=""}
+    /^\tName:/          {name=$2}
+    /^\tDescription:/   {sub(/^\tDescription: /,"");desc=$0}
+    /^\tMute:/          {mute=$2}
+    /^\tVolume: front-left/ {match($0,/[0-9]+%/);vol=substr($0,RSTART,RLENGTH)}
+    /^\tMonitor of Sink:/ {
+      is_mon = ($4 != "n/a")
+      tag = (name==def) ? " <- default" : ""
+      kind = is_mon ? "[monitor]" : "[MIC]    "
+      printf "  %s  vol=%-5s mute=%-3s  %s%s\n       %s\n", kind, vol, mute, desc, tag, name
+    }'
+  echo
+  echo "choose one with:  export CT_AUDIO_SOURCE=<name>"
+  exit 0 ;;
+
+test)
+  secs="${2:-5}"
+  wav="$(mktemp --suffix=.wav)"
+  echo "recording ${secs}s from: $src"
+  echo "  -> SPEAK NOW at your normal interview volume"
+  ffmpeg -hide_banner -loglevel error -nostdin -f pulse -i "$src"          -ac 1 -ar 16000 -t "$secs" -y "$wav"
+  stats="$(ffmpeg -hide_banner -nostdin -i "$wav" -af volumedetect -f null - 2>&1)"
+  mean="$(sed -n 's/.*mean_volume: \(-\?[0-9.]*\) dB.*/\1/p' <<<"$stats")"
+  peak="$(sed -n 's/.*max_volume: \(-\?[0-9.]*\) dB.*/\1/p' <<<"$stats")"
+  echo
+  echo "  mean: ${mean} dB    peak: ${peak} dB"
+  awk -v m="$mean" -v p="$peak" 'BEGIN{
+    if (p > -1)        print "  CLIPPING - lower the input volume";
+    else if (p < -45)  print "  SILENT - wrong source, muted, or mic not connected";
+    else if (m < -40)  print "  VERY QUIET - raise it:  wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 80%";
+    else if (m < -30)  print "  quiet but usable - whisper will cope; louder is better";
+    else               print "  GOOD - levels are fine for transcription";
+  }'
+  echo
+  echo "  play it back:  ffplay -autoexit -nodisp $wav"
+  exit 0 ;;
+esac
+
+dir="$(ct_session_dir)"
+pidf="$dir/.audio.pid"
+
+case "$1" in
 start)
   [ -f "$pidf" ] && { echo "already recording (pid $(cat "$pidf"))" >&2; exit 1; }
   start_ms="$(cat "$dir/.start_ms")"
@@ -42,5 +86,5 @@ status)
     echo "not recording"
   fi
   ;;
-*) echo "usage: ct-audio {start|stop|status}" >&2; exit 1 ;;
+*) echo "usage: ct-audio {devices|test [secs]|start|stop|status}" >&2; exit 1 ;;
 esac
