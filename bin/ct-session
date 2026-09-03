@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# ct-session start <problem> | end | current
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ct-lib.sh
+. "$DIR/ct-lib.sh"
+REPO_ROOT="$(cd "$DIR/.." && pwd)"
+
+cmd="${1:-}"; shift || true
+
+case "$cmd" in
+start)
+  problem="${1:-}"
+  [ -n "$problem" ] || { echo "usage: ct-session start <problem>" >&2; exit 1; }
+  src="$REPO_ROOT/problems/$problem"
+  [ -d "$src" ] || { echo "no such problem: $src" >&2; exit 1; }
+
+  id="$(date -u +%Y-%m-%dT%H-%M-%S)-$problem"
+  dir="$CT_SESSIONS/$id"
+  mkdir -p "$dir" "$CT_STATE"
+
+  ct_now_ms > "$dir/.start_ms"
+  cp -r "$src" "$dir/repo"
+  rm -rf "$dir/repo/.git"
+  git -C "$dir/repo" init -q -b main
+  git -C "$dir/repo" add -A
+  git -C "$dir/repo" commit -q -m "session.start"
+
+  lang="$(jq -r '.lang // "java"' "$src/meta.json" 2>/dev/null || echo java)"
+  jq -n --arg id "$id" --arg p "$problem" --arg lang "$lang" \
+        --arg utc "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" \
+    '{spec:"0.1", id:$id, problem:$p, lang:$lang, started_utc:$utc,
+      duration_ms:null, media:{audio:null,video:null,video_offset_ms:0},
+      tool:{name:"codetrace",version:"0.1.0"}}' > "$dir/manifest.json"
+
+  : > "$dir/session.jsonl"
+  echo "$dir" > "$CT_CURRENT"
+  ct_emit "$dir" session.start "$(jq -cn --arg p "$problem" --arg l "$lang" '{problem:$p,lang:$l}')"
+
+  echo "session: $id"
+  echo "cd $dir/repo"
+  ;;
+
+end)
+  dir="$(ct_session_dir)"
+  ct_emit "$dir" session.end '{"reason":"user"}'
+  start="$(cat "$dir/.start_ms")"; now="$(ct_now_ms)"
+  tmp="$(mktemp)"
+  jq --argjson d "$(( now - start ))" '.duration_ms = $d' "$dir/manifest.json" > "$tmp"
+  mv "$tmp" "$dir/manifest.json"
+  rm -f "$CT_CURRENT"
+  echo "ended: $dir"
+  echo "events: $(wc -l < "$dir/session.jsonl")"
+  ;;
+
+current)
+  ct_session_dir && echo
+  ;;
+
+*)
+  echo "usage: ct-session {start <problem>|end|current}" >&2; exit 1 ;;
+esac

@@ -1,0 +1,15 @@
+{
+  "slug": "removable-indices",
+  "title": "Removable Indices",
+  "lang": "java",
+  "difficulty": "medium",
+  "topics": ["strings", "two-pointers", "invariants"],
+  "source": "HackerRank AI Mock Interview (2026-09-03)",
+  "url": null,
+  "summary": "str1 is exactly one character longer than str2. Return every index of str1 whose removal yields str2, ascending, or [-1].",
+  "io": {
+    "stdin": "line 1: str1, line 2: str2",
+    "stdout": "one index per line, or -1"
+  },
+  "notes": "Problem statement text is not stored here (see SPEC.md). Test cases are original."
+}

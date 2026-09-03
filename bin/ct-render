@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# ct-render [session_dir] — regenerate session.md and metrics.json from session.jsonl
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$DIR/ct-lib.sh"
+
+dir="${1:-$(ct_session_dir)}"
+jsonl="$dir/session.jsonl"
+[ -f "$jsonl" ] || { echo "no session.jsonl in $dir" >&2; exit 1; }
+
+# ---- metrics ---------------------------------------------------------------
+jq -s '
+  def ms_of(f): (map(select(f)) | if length>0 then .[0].t else null end);
+  {
+    duration_ms:                 (map(select(.type=="session.end")) | if length>0 then .[0].t else (max_by(.t).t) end),
+    time_to_approach_stated_ms:  ms_of(.type=="marker" and .name=="approach.stated"),
+    time_to_complexity_stated_ms:ms_of(.type=="marker" and .name=="complexity.stated"),
+    time_to_first_compile_ms:    ms_of(.type|startswith("compile.")),
+    time_to_first_passing_test_ms: ms_of(.type=="test.run" and .failed==0),
+    compile_attempts:            (map(select(.type|startswith("compile."))) | length),
+    compile_failures:            (map(select(.type=="compile.error")) | length),
+    test_runs:                   (map(select(.type=="test.run")) | length),
+    speech_segments:             (map(select(.type=="speech")) | length),
+    speech_total_ms:             (map(select(.type=="speech") | .dur) | add // 0),
+    longest_idle_ms:             (map(select(.type=="idle") | .dur) | max // 0),
+    idle_total_ms:               (map(select(.type=="idle") | .dur) | add // 0),
+    markers:                     (map(select(.type=="marker") | .name)),
+    stated_approach_before_first_compile:
+      ((ms_of(.type=="marker" and .name=="approach.stated") // 1e18)
+       < (ms_of(.type|startswith("compile.")) // 1e18))
+  }' "$jsonl" > "$dir/metrics.json"
+
+# ---- session.md ------------------------------------------------------------
+{
+  echo "# session: $(jq -r .id "$dir/manifest.json")"
+  echo
+  jq -r '"- problem: \(.problem)\n- lang: \(.lang)\n- started: \(.started_utc)"' "$dir/manifest.json"
+  echo
+  echo "## metrics"
+  echo '```json'
+  cat "$dir/metrics.json"
+  echo '```'
+  echo
+  echo "## timeline"
+  echo
+  jq -r '
+    def ts: (.t/1000|floor) as $s | "\(($s/60|floor)|tostring|(" "*(2-length))+.):\((($s%60)|tostring|("0"*(2-length))+.))";
+    if   .type=="speech"        then "\(ts)  🗣  \(.text)"
+    elif .type=="marker"        then "\(ts)  ⚑  \(.name)\(if .text then ": "+.text else "" end)"
+    elif .type=="compile.ok"    then "\(ts)  ✅ compile ok (\(.ms)ms) [\(.sha)]"
+    elif .type=="compile.error" then "\(ts)  ❌ compile error [\(.sha)]\n" + (.diags|map("        \(.file):\(.line) \(.msg)")|join("\n"))
+    elif .type=="test.run"      then "\(ts)  🧪 tests \(.passed)/\(.total) [\(.sha)]" + (if .failed>0 then "\n" + (.failing|map("        FAIL \(.case): expected \(.expected|@json) got \(.actual|@json)")|join("\n")) else "" end)
+    elif .type=="idle"          then "\(ts)  ⏸  idle \((.dur/1000|floor))s"
+    elif .type=="edit"          then "\(ts)  ✎  edit +\(.added)/-\(.removed) [\(.sha)]"
+    elif .type=="session.start" then "\(ts)  ▶  session start"
+    elif .type=="session.end"   then "\(ts)  ■  session end"
+    else "\(ts)  ·  \(.type)" end' "$jsonl"
+  echo
+  echo "## final code"
+  echo
+  echo '```'"$(jq -r .lang "$dir/manifest.json")"
+  cat "$dir/repo/Solution.java" 2>/dev/null || echo "(none)"
+  echo '```'
+  echo
+  echo "## code evolution"
+  echo
+  echo '```'
+  git -C "$dir/repo" log --format='%h %s' --reverse 2>/dev/null || true
+  echo '```'
+} > "$dir/session.md"
+
+echo "rendered: $dir/session.md"
+echo "metrics:  $dir/metrics.json"

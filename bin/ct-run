@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# ct-run — compile + test the current session's solution, emit events, snapshot to git.
+# Run from inside the session repo (or anywhere while a session is active).
+set -uo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$DIR/ct-lib.sh"
+
+dir="$(ct_session_dir)" || exit 1
+repo="$dir/repo"
+lang="$(jq -r '.lang // "java"' "$dir/manifest.json")"
+
+# ---- parse javac diagnostics into JSON -------------------------------------
+parse_javac() {
+  awk '
+    match($0, /^([^:]+):([0-9]+): (error|warning): (.*)$/, m) {
+      printf "%s\t%s\t%s\t%s\n", m[1], m[2], m[3], m[4]
+    }' "$1" \
+  | jq -R -s -c 'split("\n") | map(select(length>0) | split("\t"))
+                 | map({file:.[0], line:(.[1]|tonumber), sev:.[2], msg:.[3]})'
+}
+
+# ---- compile ---------------------------------------------------------------
+compile() {
+  case "$lang" in
+    java)
+      local t0 t1 out rc
+      t0="$(ct_now_ms)"
+      out="$(mktemp)"
+      ( cd "$repo" && javac -Xdiags:verbose Solution.java ) >"$out" 2>&1
+      rc=$?
+      t1="$(ct_now_ms)"
+      COMPILE_MS=$(( t1 - t0 ))
+      COMPILE_RC=$rc
+      COMPILE_DIAGS="$(parse_javac "$out")"
+      [ $rc -ne 0 ] && cat "$out" >&2
+      rm -f "$out"
+      return $rc ;;
+    *)
+      echo "ct-run: no adapter for lang '$lang' yet" >&2; return 127 ;;
+  esac
+}
+
+# ---- run test cases --------------------------------------------------------
+run_cases() {
+  local passed=0 failed=0 failing='[]'
+  shopt -s nullglob
+  for in_f in "$repo"/cases/*.in; do
+    local name exp actual
+    name="$(basename "$in_f" .in)"
+    exp="${in_f%.in}.expected"
+    [ -f "$exp" ] || continue
+    actual="$( cd "$repo" && timeout 10 java Solution < "$in_f" 2>/dev/null )"
+    if [ "$actual" = "$(cat "$exp")" ]; then
+      passed=$(( passed + 1 ))
+    else
+      failed=$(( failed + 1 ))
+      failing="$(jq -c --arg c "$name" --arg e "$(cat "$exp")" --arg a "$actual" \
+                 '. + [{case:$c, expected:$e, actual:$a}]' <<<"$failing")"
+    fi
+  done
+  TEST_PASSED=$passed; TEST_FAILED=$failed; TEST_FAILING="$failing"
+}
+
+# ---- main ------------------------------------------------------------------
+if compile; then
+  sha="$(ct_commit "$repo" "compile.ok")"
+  ct_emit "$dir" compile.ok \
+    "$(jq -cn --arg s "$sha" --argjson ms "$COMPILE_MS" '{sha:$s, exit:0, ms:$ms}')"
+  echo "compile ok (${COMPILE_MS}ms)"
+
+  run_cases
+  sha="$(ct_commit "$repo" "test.run ${TEST_PASSED}/$(( TEST_PASSED + TEST_FAILED ))")"
+  ct_emit "$dir" test.run \
+    "$(jq -cn --arg s "$sha" --argjson p "$TEST_PASSED" --argjson f "$TEST_FAILED" \
+              --argjson fail "$TEST_FAILING" \
+       '{sha:$s, passed:$p, failed:$f, total:($p+$f), failing:$fail}')"
+  echo "tests: ${TEST_PASSED} passed, ${TEST_FAILED} failed"
+  [ "$TEST_FAILED" -gt 0 ] && jq -r '.[] | "  FAIL \(.case): expected \(.expected|@json) got \(.actual|@json)"' <<<"$TEST_FAILING"
+  exit 0
+else
+  sha="$(ct_commit "$repo" "compile.error")"
+  ct_emit "$dir" compile.error \
+    "$(jq -cn --arg s "$sha" --argjson rc "$COMPILE_RC" --argjson d "$COMPILE_DIAGS" \
+       '{sha:$s, exit:$rc, diags:$d}')"
+  echo "compile FAILED" >&2
+  exit 1
+fi

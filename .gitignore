@@ -1,0 +1,14 @@
+/target
+**/*.class
+
+# whisper models — hundreds of MB, downloaded by `ct doctor`
+models/*.bin
+models/*.gguf
+
+# recordings never belong in this repo
+sessions/
+*.wav
+*.mp4
+*.mkv
+
+.DS_Store

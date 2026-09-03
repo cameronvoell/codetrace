@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# ct-mark <name> [text]   e.g. ct-mark approach.stated
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$DIR/ct-lib.sh"
+name="${1:?usage: ct-mark <name> [text]}"; shift || true
+text="${*:-}"
+dir="$(ct_session_dir)"
+if [ -n "$text" ]; then
+  ct_emit "$dir" marker "$(jq -cn --arg n "$name" --arg t "$text" '{name:$n,text:$t}')"
+else
+  ct_emit "$dir" marker "$(jq -cn --arg n "$name" '{name:$n}')"
+fi
+echo "marked: $name"

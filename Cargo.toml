@@ -1,0 +1,36 @@
+[package]
+name = "codetrace"
+version = "0.1.0"
+edition = "2021"
+description = "Record how you actually solve a problem, not just the answer"
+license = "MIT"
+repository = "https://github.com/cameronvoell/codetrace"
+default-run = "ct"
+
+[[bin]]
+name = "ct"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Added as each subsystem lands — kept out of the default build so that
+# `cargo build` stays fast and dependency-free while the shell harness in
+# bin/ is doing the real work.
+#
+#   ratatui, crossterm            TUI dashboard
+#   cpal, hound                   mic capture + wav
+#   notify, notify-debouncer-full file watching
+#   portable-pty                  terminal capture
+#   crossbeam-channel             thread messaging (deliberately not tokio:
+#                                 audio callback + blocking pty read + notify
+#                                 thread are simpler with threads than async)
+#   chrono                        wall-clock anchor
+#
+# Deliberately shelling out rather than linking, for now:
+#   git      instead of git2      (libgit2-sys needs a C toolchain)
+#   whisper-cli instead of whisper-rs (whisper.cpp needs a C++ toolchain)
+# Link them only if single-binary distribution becomes a requirement.
