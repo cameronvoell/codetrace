@@ -8,6 +8,11 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 dir="$(ct_session_dir)" || exit 1
 repo="$dir/repo"
 lang="$(jq -r '.lang // "java"' "$dir/manifest.json")"
+# Pin the API surface to the interview platform's JDK. --release checks the
+# historical API signatures; -source/-target only check syntax and would let
+# Stream.toList() (16) or List.getFirst() (21) through to fail on the day.
+jrel="$(jq -r '.java_release // empty' "$repo/meta.json" 2>/dev/null)"
+RELFLAG=(); [ -n "$jrel" ] && RELFLAG=(--release "$jrel")
 
 # ---- parse javac diagnostics into JSON -------------------------------------
 parse_javac() {
@@ -26,7 +31,7 @@ compile() {
       local t0 t1 out rc
       t0="$(ct_now_ms)"
       out="$(mktemp)"
-      ( cd "$repo" && javac -Xdiags:verbose Solution.java ) >"$out" 2>&1
+      ( cd "$repo" && javac "${RELFLAG[@]}" -Xdiags:verbose Solution.java ) >"$out" 2>&1
       rc=$?
       t1="$(ct_now_ms)"
       COMPILE_MS=$(( t1 - t0 ))
@@ -66,7 +71,7 @@ if compile; then
   sha="$(ct_commit "$repo" "compile.ok")"
   ct_emit "$dir" compile.ok \
     "$(jq -cn --arg s "$sha" --argjson ms "$COMPILE_MS" '{sha:$s, exit:0, ms:$ms}')"
-  echo "compile ok (${COMPILE_MS}ms)"
+  echo "compile ok (${COMPILE_MS}ms${jrel:+, --release $jrel})"
 
   run_cases
   sha="$(ct_commit "$repo" "test.run ${TEST_PASSED}/$(( TEST_PASSED + TEST_FAILED ))")"
