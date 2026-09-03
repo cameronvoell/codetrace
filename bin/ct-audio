@@ -5,7 +5,7 @@ set -euo pipefail
 DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 . "$DIR/ct-lib.sh"
 
-src="${CT_AUDIO_SOURCE:-$(pactl get-default-source 2>/dev/null || echo default)}"
+IFS=$'\t' read -r src CT_SOURCE_ORIGIN < <(ct_resolve_source) || true
 
 case "${1:-status}" in
 devices)
@@ -25,11 +25,8 @@ devices)
       printf "  %s  vol=%-5s mute=%-3s  %s%s%s\n       %s\n", kind, vol, mute, desc, tag, bt, name
     }'
   echo
-  if [ -n "${CT_AUDIO_SOURCE:-}" ]; then
-    origin="CT_AUDIO_SOURCE is set"
-  else
-    origin="system default; pin it to stop it changing when you connect/disconnect a headset"
-  fi
+  origin="$CT_SOURCE_ORIGIN"
+  [ "$origin" = "system default" ] && origin="system default; set CT_AUDIO_PREFER to stop it changing on hotplug"
   desc="$(pactl list sources 2>/dev/null \
           | awk -v n="$src" '/^\tName:/{cur=$2} /^\tDescription:/{if(cur==n){sub(/^\tDescription: /,"");print;exit}}')"
   echo "==> codetrace will record from:  ${desc:-$src}"

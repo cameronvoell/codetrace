@@ -37,3 +37,33 @@ ct_commit() {
     git -C "$repo" rev-parse --short HEAD
   fi
 }
+
+# names of real capture devices (monitors excluded — those are desktop audio)
+ct_list_mics() {
+  pactl list sources 2>/dev/null | awk '
+    /^\tName:/            { name=$2 }
+    /^\tMonitor of Sink:/ { if ($4 == "n/a") print name }'
+}
+
+# Resolve which source to record from, at call time so hotplug is picked up.
+#   CT_AUDIO_SOURCE  exact source name, wins outright
+#   CT_AUDIO_PREFER  colon-separated regexes, highest priority first;
+#                    first one matching a connected mic wins
+#   otherwise        the system default
+ct_resolve_source() {
+  if [ -n "${CT_AUDIO_SOURCE:-}" ]; then
+    printf '%s\t%s\n' "$CT_AUDIO_SOURCE" "CT_AUDIO_SOURCE is set"; return
+  fi
+  if [ -n "${CT_AUDIO_PREFER:-}" ]; then
+    local mics pat hit
+    mics="$(ct_list_mics)"
+    while IFS= read -r pat; do
+      [ -n "$pat" ] || continue
+      hit="$(grep -m1 -E "$pat" <<<"$mics" || true)"
+      if [ -n "$hit" ]; then
+        printf '%s\t%s\n' "$hit" "CT_AUDIO_PREFER matched /$pat/"; return
+      fi
+    done <<< "$(tr ':' '\n' <<<"$CT_AUDIO_PREFER")"
+  fi
+  printf '%s\t%s\n' "$(pactl get-default-source 2>/dev/null || echo default)" "system default"
+}

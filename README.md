@@ -44,6 +44,20 @@ ct-transcribe && ct-render           # whisper -> speech events -> session.md
 Requires `jq`, `git`, a JDK, `ffmpeg`, and `whisper-cpp` with a ggml model
 (`CT_WHISPER_MODEL`). Run `ct-session start ... --no-audio` to skip the mic.
 
+### Choosing a microphone
+
+`CT_AUDIO_SOURCE` pins one source by exact name. `CT_AUDIO_PREFER` is usually
+better: a colon-separated list of regexes, highest priority first, resolved
+fresh on every recording so hotplug takes effect immediately.
+
+```bash
+export CT_AUDIO_PREFER='Focusrite_Vocaster.*USB5__source:bluez_input:alsa_input\.pci'
+```
+
+Monitor sources are never eligible -- those carry desktop audio, not your
+voice, and would put anything playing on your machine into the transcript.
+`ct-audio devices` prints which rule matched.
+
 Then, in Claude Code:
 
 ```
