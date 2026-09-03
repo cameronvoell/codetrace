@@ -16,12 +16,13 @@ devices)
     /^\tName:/          {name=$2}
     /^\tDescription:/   {sub(/^\tDescription: /,"");desc=$0}
     /^\tMute:/          {mute=$2}
-    /^\tVolume: front-left/ {match($0,/[0-9]+%/);vol=substr($0,RSTART,RLENGTH)}
+    /^\tVolume:/ {match($0,/[0-9]+%/); vol=(RSTART>0)?substr($0,RSTART,RLENGTH):"?"}
     /^\tMonitor of Sink:/ {
       is_mon = ($4 != "n/a")
       tag = (name==def) ? " <- default" : ""
       kind = is_mon ? "[monitor]" : "[MIC]    "
-      printf "  %s  vol=%-5s mute=%-3s  %s%s\n       %s\n", kind, vol, mute, desc, tag, name
+      bt = (name ~ /^bluez/) ? "  (bluetooth: mic use forces the narrowband HFP codec)" : ""
+      printf "  %s  vol=%-5s mute=%-3s  %s%s%s\n       %s\n", kind, vol, mute, desc, tag, bt, name
     }'
   echo
   echo "choose one with:  export CT_AUDIO_SOURCE=<name>"
