@@ -8,6 +8,11 @@ dir="${1:-$(ct_session_dir)}"
 jsonl="$dir/session.jsonl"
 [ -f "$jsonl" ] || { echo "no session.jsonl in $dir" >&2; exit 1; }
 
+# SPEC requires non-decreasing t. Transcription merges speech in after the fact,
+# so normalize here rather than trusting append order.
+sorted="$(mktemp)"; jq -s -c 'sort_by(.t) | .[]' "$jsonl" > "$sorted"
+mv "$sorted" "$jsonl"
+
 # ---- metrics ---------------------------------------------------------------
 jq -s '
   def ms_of(f): (map(select(f)) | if length>0 then .[0].t else null end);

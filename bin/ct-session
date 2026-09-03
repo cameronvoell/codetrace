@@ -37,12 +37,17 @@ start)
   echo "$dir" > "$CT_CURRENT"
   ct_emit "$dir" session.start "$(jq -cn --arg p "$problem" --arg l "$lang" '{problem:$p,lang:$l}')"
 
+  if [ "${2:-}" != "--no-audio" ] && command -v ffmpeg >/dev/null; then
+    "$DIR/ct-audio" start || echo "(audio unavailable — continuing without it)" >&2
+  fi
+
   echo "session: $id"
   echo "cd $dir/repo"
   ;;
 
 end)
   dir="$(ct_session_dir)"
+  [ -f "$dir/.audio.pid" ] && "$DIR/ct-audio" stop || true
   ct_emit "$dir" session.end '{"reason":"user"}'
   start="$(cat "$dir/.start_ms")"; now="$(ct_now_ms)"
   tmp="$(mktemp)"

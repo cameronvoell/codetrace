@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# ct-transcribe [session_dir] — whisper the session audio into speech events,
+# merged into session.jsonl in timestamp order.
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$DIR/ct-lib.sh"
+
+dir="${1:-$(ct_session_dir)}"
+wav="$dir/session.wav"
+[ -f "$wav" ] || { echo "no audio: $wav" >&2; exit 1; }
+
+WHISPER="${CT_WHISPER:-$(command -v whisper-cli || command -v whisper.cpp || true)}"
+[ -n "$WHISPER" ] || { echo "whisper not found. install: sudo pacman -S whisper.cpp" >&2
+                       echo "or set CT_WHISPER=/path/to/whisper-cli" >&2; exit 1; }
+MODEL="${CT_WHISPER_MODEL:?set CT_WHISPER_MODEL to a ggml model, e.g. ~/models/ggml-small.en.bin}"
+
+offset="$(cat "$dir/.audio_offset_ms" 2>/dev/null || echo 0)"
+
+echo "transcribing $(basename "$wav") with $(basename "$MODEL")..."
+"$WHISPER" -m "$MODEL" -f "$wav" -oj -of "$dir/.whisper" --no-prints >/dev/null
+
+# whisper.cpp -oj emits {"transcription":[{"offsets":{"from":ms,"to":ms},"text":"..."}]}
+jq -c --argjson off "$offset" '
+  .transcription[]
+  | select((.text|gsub("^\\s+|\\s+$";"")) | length > 0)
+  | {t: (.offsets.from + $off),
+     type: "speech",
+     dur: (.offsets.to - .offsets.from),
+     text: (.text | gsub("^\\s+|\\s+$";""))}' "$dir/.whisper.json" > "$dir/.speech.jsonl"
+
+n=$(wc -l < "$dir/.speech.jsonl")
+# merge and re-sort the whole stream by t (stable: speech after same-t events)
+cat "$dir/session.jsonl" "$dir/.speech.jsonl" \
+  | jq -s -c 'sort_by(.t) | .[]' > "$dir/.merged.jsonl"
+mv "$dir/.merged.jsonl" "$dir/session.jsonl"
+rm -f "$dir/.speech.jsonl" "$dir/.whisper.json"
+
+echo "merged $n speech segments (audio offset ${offset}ms)"
+echo "now run: ct-render $dir"

@@ -27,12 +27,20 @@ Rust involved. The recorder itself is in progress.
 
 ```bash
 export PATH="$PWD/bin:$PATH"
-ct-session start removable-indices     # begins a session, prints its id
-cd problems/removable-indices
+
+ct-session start removable-indices   # starts mic capture + prints a cd command
+cd <the printed path>
+
+ct-mark approach.stated              # press before you write any code
 $EDITOR Solution.java
-ct-run                                 # compile + test, emits events, commits
-ct-session end
+ct-run                               # compile + test, emit events, snapshot
+
+ct-session end                       # stops audio
+ct-transcribe && ct-render           # whisper -> speech events -> session.md
 ```
+
+Requires `jq`, `git`, a JDK, `ffmpeg`, and `whisper.cpp` with a ggml model
+(`CT_WHISPER_MODEL`). Run `ct-session start ... --no-audio` to skip the mic.
 
 Then, in Claude Code:
 

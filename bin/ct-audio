@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# ct-audio start|stop|status — mic capture for the active session.
+# Records 16kHz mono, which is what whisper wants natively (no resample step).
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$DIR/ct-lib.sh"
+
+dir="$(ct_session_dir)"
+pidf="$dir/.audio.pid"
+src="${CT_AUDIO_SOURCE:-$(pactl get-default-source 2>/dev/null || echo default)}"
+
+case "${1:-status}" in
+start)
+  [ -f "$pidf" ] && { echo "already recording (pid $(cat "$pidf"))" >&2; exit 1; }
+  start_ms="$(cat "$dir/.start_ms")"
+  now="$(ct_now_ms)"
+  # offset of audio t=0 within the session clock; ct-transcribe adds it back
+  echo $(( now - start_ms )) > "$dir/.audio_offset_ms"
+  ffmpeg -hide_banner -loglevel error -nostdin \
+         -f pulse -i "$src" -ac 1 -ar 16000 \
+         "$dir/session.wav" & echo $! > "$pidf"
+  sleep 0.4
+  kill -0 "$(cat "$pidf")" 2>/dev/null || { rm -f "$pidf"; echo "ffmpeg died — check: pactl list short sources" >&2; exit 1; }
+  jq --arg a session.wav '.media.audio = $a' "$dir/manifest.json" > "$dir/.m" && mv "$dir/.m" "$dir/manifest.json"
+  echo "recording: $src -> $dir/session.wav"
+  ;;
+stop)
+  [ -f "$pidf" ] || { echo "not recording" >&2; exit 1; }
+  pid="$(cat "$pidf")"
+  kill -INT "$pid" 2>/dev/null || true
+  # ffmpeg is not a child of THIS invocation, so `wait` is a no-op here; poll
+  # instead. Returning early truncates the WAV header and the file is unusable.
+  for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+  kill -0 "$pid" 2>/dev/null && { kill -9 "$pid" 2>/dev/null || true; sleep 0.2; }
+  rm -f "$pidf"
+  echo "stopped: $(du -h "$dir/session.wav" | cut -f1) $dir/session.wav"
+  ;;
+status)
+  if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
+    echo "recording (pid $(cat "$pidf")) -> $dir/session.wav"
+  else
+    echo "not recording"
+  fi
+  ;;
+*) echo "usage: ct-audio {start|stop|status}" >&2; exit 1 ;;
+esac
