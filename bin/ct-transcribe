@@ -2,7 +2,7 @@
 # ct-transcribe [session_dir] — whisper the session audio into speech events,
 # merged into session.jsonl in timestamp order.
 set -euo pipefail
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 . "$DIR/ct-lib.sh"
 
 dir="${1:-$(ct_session_dir)}"

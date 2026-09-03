@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ct-session start <problem> | end | current
 set -euo pipefail
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # shellcheck source=ct-lib.sh
 . "$DIR/ct-lib.sh"
 REPO_ROOT="$(cd "$DIR/.." && pwd)"

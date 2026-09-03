@@ -26,7 +26,9 @@ Rust involved. The recorder itself is in progress.
 ## Quick start (no build required)
 
 ```bash
-export PATH="$PWD/bin:$PATH"
+just install   # symlink ct-* into ~/.local/bin (or: export PATH="$PWD/bin:$PATH")
+
+ct-audio devices                     # confirm which mic will be recorded
 
 ct-session start removable-indices   # starts mic capture + prints a cd command
 cd <the printed path>

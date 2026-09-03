@@ -2,7 +2,7 @@
 # ct-run — compile + test the current session's solution, emit events, snapshot to git.
 # Run from inside the session repo (or anywhere while a session is active).
 set -uo pipefail
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 . "$DIR/ct-lib.sh"
 
 dir="$(ct_session_dir)" || exit 1

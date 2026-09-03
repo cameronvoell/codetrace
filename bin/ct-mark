@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ct-mark <name> [text]   e.g. ct-mark approach.stated
 set -euo pipefail
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 . "$DIR/ct-lib.sh"
 name="${1:?usage: ct-mark <name> [text]}"; shift || true
 text="${*:-}"

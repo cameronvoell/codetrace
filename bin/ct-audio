@@ -2,7 +2,7 @@
 # ct-audio start|stop|status — mic capture for the active session.
 # Records 16kHz mono, which is what whisper wants natively (no resample step).
 set -euo pipefail
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 . "$DIR/ct-lib.sh"
 
 src="${CT_AUDIO_SOURCE:-$(pactl get-default-source 2>/dev/null || echo default)}"
@@ -25,7 +25,19 @@ devices)
       printf "  %s  vol=%-5s mute=%-3s  %s%s%s\n       %s\n", kind, vol, mute, desc, tag, bt, name
     }'
   echo
-  echo "choose one with:  export CT_AUDIO_SOURCE=<name>"
+  if [ -n "${CT_AUDIO_SOURCE:-}" ]; then
+    origin="CT_AUDIO_SOURCE is set"
+  else
+    origin="system default; pin it to stop it changing when you connect/disconnect a headset"
+  fi
+  desc="$(pactl list sources 2>/dev/null \
+          | awk -v n="$src" '/^\tName:/{cur=$2} /^\tDescription:/{if(cur==n){sub(/^\tDescription: /,"");print;exit}}')"
+  echo "==> codetrace will record from:  ${desc:-$src}"
+  echo "    $src"
+  echo "    ($origin)"
+  echo
+  echo "change it with:   export CT_AUDIO_SOURCE=<name from above>"
+  echo "check the level:  ct-audio test 5"
   exit 0 ;;
 
 test)

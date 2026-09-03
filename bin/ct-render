@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ct-render [session_dir] — regenerate session.md and metrics.json from session.jsonl
 set -euo pipefail
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 . "$DIR/ct-lib.sh"
 
 dir="${1:-$(ct_session_dir)}"
