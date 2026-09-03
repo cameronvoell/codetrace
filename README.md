@@ -39,7 +39,7 @@ ct-session end                       # stops audio
 ct-transcribe && ct-render           # whisper -> speech events -> session.md
 ```
 
-Requires `jq`, `git`, a JDK, `ffmpeg`, and `whisper.cpp` with a ggml model
+Requires `jq`, `git`, a JDK, `ffmpeg`, and `whisper-cpp` with a ggml model
 (`CT_WHISPER_MODEL`). Run `ct-session start ... --no-audio` to skip the mic.
 
 Then, in Claude Code:

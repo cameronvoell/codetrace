@@ -9,9 +9,16 @@ dir="${1:-$(ct_session_dir)}"
 wav="$dir/session.wav"
 [ -f "$wav" ] || { echo "no audio: $wav" >&2; exit 1; }
 
-WHISPER="${CT_WHISPER:-$(command -v whisper-cli || command -v whisper.cpp || true)}"
-[ -n "$WHISPER" ] || { echo "whisper not found. install: sudo pacman -S whisper.cpp" >&2
-                       echo "or set CT_WHISPER=/path/to/whisper-cli" >&2; exit 1; }
+# upstream renamed `main` -> `whisper-cli`; distros vary. Probe, then give up.
+WHISPER="${CT_WHISPER:-}"
+if [ -z "$WHISPER" ]; then
+  for c in whisper-cli whisper-cpp whisper-command whisper main; do
+    if command -v "$c" >/dev/null; then WHISPER="$(command -v "$c")"; break; fi
+  done
+fi
+[ -n "$WHISPER" ] || { echo "whisper not found. install:  sudo pacman -S whisper-cpp" >&2
+                       echo "then, if the binary has another name:  export CT_WHISPER=/path/to/it" >&2
+                       exit 1; }
 MODEL="${CT_WHISPER_MODEL:?set CT_WHISPER_MODEL to a ggml model, e.g. ~/models/ggml-small.en.bin}"
 
 offset="$(cat "$dir/.audio_offset_ms" 2>/dev/null || echo 0)"
